@@ -1,0 +1,1 @@
+"""Blokus authoritative room server."""

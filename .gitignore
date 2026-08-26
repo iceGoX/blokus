@@ -1,0 +1,25 @@
+# Python runtime files
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local environment and editor files
+.DS_Store
+.env
+.env.*
+.venv/
+venv/
+.idea/
+.vscode/
+
+# Local test/cache output
+.coverage
+htmlcov/
+coverage.xml
+.blokus-session*
+.obelisk/
+
+# Build and temporary release artifacts
+dist/
+build/
+tmp/

@@ -1,0 +1,21 @@
+[Unit]
+Description=Blokus online room server
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/blokus
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 /opt/blokus/server/app.py --host 127.0.0.1 --port 8790
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+MemoryMax=256M
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,10 @@
+{
+  "name": "blokus-online",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --check game.js",
+    "test": "python3 -m unittest discover -s tests -v",
+    "dev": "python3 server/app.py --host 127.0.0.1 --port 4173"
+  }
+}

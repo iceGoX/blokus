@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#e9e0cc" />
+    <meta name="description" content="支持 2–4 人在线房间的 Blokus 角斗士棋" />
+    <title>角域 · 在线角斗士棋</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='28' height='28' x='4' y='4' rx='5' fill='%232979df'/%3E%3Crect width='28' height='28' x='32' y='4' rx='5' fill='%23f5b51b'/%3E%3Crect width='28' height='28' x='4' y='32' rx='5' fill='%2324a66b'/%3E%3Crect width='28' height='28' x='32' y='32' rx='5' fill='%23ea4f42'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body data-theme="tabletop">
+    <div class="ambient ambient-one" aria-hidden="true"></div>
+    <div class="ambient ambient-two" aria-hidden="true"></div>
+
+    <header class="topbar">
+      <a class="brand" href="./" aria-label="返回大厅">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        <span><strong>角域</strong><small>BLOKUS ONLINE</small></span>
+      </a>
+
+      <div class="theme-switcher" aria-label="界面风格">
+        <button class="theme-button active" data-theme-value="tabletop" type="button">木桌竞赛</button>
+        <button class="theme-button" data-theme-value="arena" type="button">电子竞技</button>
+        <button class="theme-button" data-theme-value="paper" type="button">纸艺极简</button>
+      </div>
+
+      <div class="header-actions">
+        <button class="room-badge hidden" id="roomBadge" type="button" title="复制房间号">
+          <span class="connection-dot" id="connectionDot"></span>
+          <span>房间</span>
+          <b id="roomCodeHeader">------</b>
+        </button>
+        <button class="ghost-button rules-button" id="rulesButton" type="button">
+          <span>规则</span><kbd>?</kbd>
+        </button>
+      </div>
+    </header>
+
+    <main>
+      <section class="lobby-screen" id="lobbyScreen">
+        <div class="lobby-intro">
+          <p class="eyebrow">ONLINE TABLETOP</p>
+          <h1>从一个角落开始，<br /><em>占领整张棋盘。</em></h1>
+          <p class="lobby-lead">创建一个 2–4 人房间，把六位房间号发给朋友。房间坐满后，由房主开始游戏。</p>
+          <div class="lobby-facts">
+            <span><b>20×20</b> 标准棋盘</span>
+            <span><b>21</b> 块多格骨牌</span>
+            <span><b>实时</b> 房间同步</span>
+          </div>
+        </div>
+
+        <div class="lobby-card">
+          <div class="lobby-tabs" role="tablist" aria-label="进入游戏方式">
+            <button class="lobby-tab active" data-lobby-tab="create" role="tab" aria-selected="true" type="button">创建房间</button>
+            <button class="lobby-tab" data-lobby-tab="join" role="tab" aria-selected="false" type="button">加入房间</button>
+          </div>
+
+          <form class="lobby-form" id="createForm">
+            <label>
+              <span>你的昵称</span>
+              <input id="createName" name="name" maxlength="16" autocomplete="nickname" placeholder="例如：冰山棋手" required />
+            </label>
+            <fieldset>
+              <legend>房间人数</legend>
+              <div class="capacity-picker">
+                <label><input type="radio" name="capacity" value="2" /><span><b>2</b> 人对局</span></label>
+                <label><input type="radio" name="capacity" value="3" /><span><b>3</b> 人对局</span></label>
+                <label><input type="radio" name="capacity" value="4" checked /><span><b>4</b> 人对局</span></label>
+              </div>
+            </fieldset>
+            <button class="primary-button lobby-submit" type="submit">创建私人房间</button>
+          </form>
+
+          <form class="lobby-form hidden" id="joinForm">
+            <label>
+              <span>你的昵称</span>
+              <input id="joinName" name="name" maxlength="16" autocomplete="nickname" placeholder="例如：绿色先锋" required />
+            </label>
+            <label>
+              <span>六位房间号</span>
+              <input class="room-code-input" id="joinCode" name="roomCode" maxlength="6" autocapitalize="characters" autocomplete="off" placeholder="ABC234" required />
+            </label>
+            <button class="primary-button lobby-submit" type="submit">进入房间</button>
+          </form>
+
+          <p class="form-message" id="lobbyMessage" aria-live="polite"></p>
+          <button class="offline-button" id="offlineModeButton" type="button">
+            <span class="offline-icon" aria-hidden="true">◌</span>
+            <span><strong>离线模式</strong><small id="offlineModeMeta">按上方人数设置，一个人轮流操作</small></span>
+            <span aria-hidden="true">→</span>
+          </button>
+        </div>
+      </section>
+
+      <section class="waiting-screen hidden" id="waitingScreen">
+        <div class="waiting-card">
+          <p class="eyebrow">PRIVATE ROOM</p>
+          <h1>等待棋手入席</h1>
+          <p>把房间号发给朋友。达到设定人数后，房主即可开局。</p>
+          <button class="big-room-code" id="copyRoomCodeButton" type="button">
+            <span>房间号</span><b id="waitingRoomCode">------</b><small>点击复制</small>
+          </button>
+          <div class="seat-grid" id="seatGrid"></div>
+          <div class="waiting-actions">
+            <button class="primary-button" id="startGameButton" type="button">等待玩家加入</button>
+            <button class="ghost-button" id="leaveWaitingButton" type="button">退出房间</button>
+          </div>
+          <p class="form-message" id="waitingMessage" aria-live="polite"></p>
+        </div>
+      </section>
+
+      <section class="game-shell hidden" id="gameShell">
+        <section class="board-section" aria-labelledby="turnTitle">
+          <div class="turn-banner">
+            <div class="turn-copy">
+              <span class="turn-dot" id="turnDot" aria-hidden="true"></span>
+              <div>
+                <p class="eyebrow" id="turnEyebrow">CURRENT TURN</p>
+                <h1 id="turnTitle"><span id="turnName">蓝方，选择棋块</span></h1>
+              </div>
+            </div>
+            <div class="turn-count" aria-label="当前回合">
+              <strong id="turnNumber">01</strong><span>TURN</span>
+            </div>
+          </div>
+
+          <div class="score-strip" id="playerList" aria-label="玩家与积分"></div>
+
+          <div class="board-frame">
+            <div class="corner-label corner-blue">蓝</div>
+            <div class="corner-label corner-yellow">黄</div>
+            <div class="corner-label corner-green">绿</div>
+            <div class="corner-label corner-red">红</div>
+            <div class="board" id="board" role="grid" aria-label="20 乘 20 角斗士棋棋盘"></div>
+          </div>
+
+          <div class="status-bar" aria-live="polite">
+            <span class="status-icon" id="statusIcon" aria-hidden="true">↗</span>
+            <p id="statusText">正在同步房间状态…</p>
+          </div>
+        </section>
+
+        <section class="panel pieces-panel" aria-labelledby="piecesTitle">
+          <div class="panel-heading pieces-heading">
+            <div>
+              <p class="eyebrow">YOUR PIECES</p>
+              <h2 id="piecesTitle">你的棋块 <span id="pieceCount">21</span></h2>
+            </div>
+            <button class="icon-button" id="clearSelectionButton" type="button" title="取消选择" aria-label="取消选择">×</button>
+          </div>
+
+          <div class="selected-card">
+            <div class="selected-preview" id="selectedPreview" aria-hidden="true"><span class="empty-selection">+</span></div>
+            <div class="selected-copy">
+              <span id="selectedName">尚未选择</span>
+              <small id="selectedMeta">轮到你时选择棋块</small>
+            </div>
+            <div class="transform-actions">
+              <button id="rotateButton" type="button" disabled aria-label="顺时针旋转棋块"><span aria-hidden="true">↻</span><small>旋转</small></button>
+              <button id="flipButton" type="button" disabled aria-label="翻转棋块"><span aria-hidden="true">⇋</span><small>翻面</small></button>
+            </div>
+          </div>
+
+          <div class="piece-bank" id="pieceBank" aria-label="可用棋块列表"></div>
+
+          <div class="game-actions">
+            <button class="primary-button danger-button" id="passButton" type="button">认输并结束</button>
+            <button class="ghost-button" id="copyGameRoomButton" type="button">复制房间号</button>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <dialog class="rules-dialog" id="rulesDialog">
+      <form method="dialog">
+        <div class="dialog-heading">
+          <div><p class="eyebrow">HOW TO PLAY</p><h2>四条规则，一局上手</h2></div>
+          <button class="icon-button" value="close" aria-label="关闭规则">×</button>
+        </div>
+        <ol class="rule-list">
+          <li><b>01</b><span><strong>覆盖起点</strong> 每位玩家的第一块棋必须覆盖自己的彩色起始角。</span></li>
+          <li><b>02</b><span><strong>只碰对角</strong> 后续同色棋块必须至少角接角，但不允许边接边。</span></li>
+          <li><b>03</b><span><strong>房间裁决</strong> 落子由服务器验证并同步给所有玩家，客户端不能自行修改棋局。</span></li>
+          <li><b>04</b><span><strong>认输结束</strong> 玩家可随时认输并退出后续回合；其他玩家继续，所有人结束后按剩余方格结算。</span></li>
+        </ol>
+        <p class="dialog-tip">房间模式为每人一色：2 人使用 14×14 棋盘，3 人使用 17×17，4 人使用标准 20×20。离线模式由一人操作四种颜色。桌面快捷键：<kbd>R</kbd> 旋转、<kbd>F</kbd> 翻面、<kbd>Esc</kbd> 取消选择。</p>
+      </form>
+    </dialog>
+
+    <dialog class="result-dialog" id="resultDialog">
+      <div class="result-card">
+        <p class="eyebrow">FINAL STANDINGS</p>
+        <div class="result-mark" aria-hidden="true">◇</div>
+        <h2 id="resultTitle">本局结束</h2>
+        <p id="resultSubtitle">剩余方格最少的玩家获胜。</p>
+        <div class="ranking-list" id="rankingList"></div>
+        <div class="result-actions">
+          <button class="primary-button" id="rematchButton" type="button">邀请再来一盘</button>
+          <button class="ghost-button" id="resultLobbyButton" type="button">回到大厅</button>
+        </div>
+      </div>
+    </dialog>
+
+    <script type="module" src="game.js"></script>
+  </body>
+</html>
