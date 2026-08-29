@@ -41,13 +41,13 @@ python3 tests/public_smoke.py https://example.com/blokus/api
 
 ## 截图
 
-### 离线对局
-
-![离线对局](assets/offline-game.png)
-
 ### 在线大厅
 
 ![在线大厅](assets/online-lobby.png)
+
+### 离线对局
+
+![离线对局](assets/offline-game.png)
 
 ## 单文件离线版
 
