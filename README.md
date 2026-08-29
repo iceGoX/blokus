@@ -38,3 +38,23 @@ python3 tests/public_smoke.py https://example.com/blokus/api
 
 - 在线模式：通过房间号加入 2–4 人房间。
 - 离线模式：选择 2–4 人，一人轮流操作对应数量的颜色，不依赖服务器。
+
+## 截图
+
+### 离线对局
+
+![离线对局](assets/offline-game.png)
+
+### 在线大厅
+
+![在线大厅](assets/online-lobby.png)
+
+## 单文件离线版
+
+`offline.html` 已将页面、样式和棋块数据全部内嵌，不包含服务器代码或网络请求。下载后直接双击即可开始离线游戏。
+
+重新生成单文件版本：
+
+```bash
+python3 tools/build_offline.py
+```
