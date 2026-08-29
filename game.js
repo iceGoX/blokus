@@ -47,7 +47,7 @@ const dom = Object.fromEntries([
   "board", "playerList", "pieceBank", "pieceCount", "turnName", "turnDot",
   "turnNumber", "turnEyebrow", "statusText", "statusIcon", "selectedPreview",
   "selectedName", "selectedMeta", "rotateButton", "flipButton",
-  "clearSelectionButton", "passButton", "copyGameRoomButton",
+  "clearSelectionButton", "confirmPlacementButton", "passButton", "copyGameRoomButton",
   "rulesButton", "rulesDialog", "resultDialog", "resultTitle", "resultSubtitle",
   "rankingList", "rematchButton", "resultLobbyButton",
 ].map((id) => [id, document.querySelector(`#${id}`)]));
@@ -66,6 +66,9 @@ let streamGeneration = 0;
 let actionPending = false;
 let lastEventId = null;
 let offlineMode = false;
+let pendingAnchor = null;
+let pendingPlacementValid = false;
+let dragPointerId = null;
 
 function loadSession() {
   try {
@@ -524,7 +527,7 @@ function renderSelection() {
   if (piece && player) {
     dom.selectedPreview.append(makeMiniPiece(selectedShape(), player.color));
     dom.selectedName.textContent = piece.name;
-    dom.selectedMeta.textContent = `${piece.cells.length} 格 · 点棋盘落子`;
+    dom.selectedMeta.textContent = `${piece.cells.length} 格 · 拖动定位后确认`;
   } else {
     const empty = document.createElement("span");
     empty.className = "empty-selection";
@@ -535,6 +538,8 @@ function renderSelection() {
   }
   dom.rotateButton.disabled = !piece || !canAct();
   dom.flipButton.disabled = !piece || !canAct();
+  dom.confirmPlacementButton.disabled = !piece || !pendingAnchor || !pendingPlacementValid || !canAct();
+  dom.board.classList.toggle("positioning", Boolean(piece && canAct()));
 }
 
 function renderTurn() {
@@ -640,6 +645,8 @@ function clearSelection() {
   rotation = 0;
   flipped = false;
   hoverAnchor = null;
+  pendingAnchor = null;
+  pendingPlacementValid = false;
   clearPreview();
   if (room?.game) {
     renderPieces();
@@ -653,9 +660,11 @@ function selectPiece(pieceId) {
   selectedPiece = pieceId;
   rotation = 0;
   flipped = false;
+  pendingAnchor = null;
+  pendingPlacementValid = false;
   renderPieces();
   renderSelection();
-  setStatus(`已选择${PIECE_MAP.get(pieceId).name}。旋转或翻面后，点棋盘落子。`);
+  setStatus(`已选择${PIECE_MAP.get(pieceId).name}。在棋盘上拖动或轻点定位，再确认落子。`);
   if (hoverAnchor) showPreview(hoverAnchor.x, hoverAnchor.y);
 }
 
@@ -683,20 +692,44 @@ function showPreview(anchorX, anchorY) {
     node.dataset.previewPlayer = player.color;
     previewIndexes.push(index);
   }
+  return result;
+}
+
+function setPendingAnchor(anchorX, anchorY) {
+  if (!selectedPiece || !canAct()) return;
+  pendingAnchor = { x: anchorX, y: anchorY };
+  hoverAnchor = pendingAnchor;
+  const result = showPreview(anchorX, anchorY);
+  pendingPlacementValid = Boolean(result?.ok);
+  dom.confirmPlacementButton.disabled = !pendingPlacementValid;
+  setStatus(result?.ok ? "位置可用，点击“确认落子”完成操作。" : result?.reason || "当前位置不可用。", result?.ok ? "success" : "error");
 }
 
 function rotateSelected() {
   if (!selectedPiece || !canAct()) return;
   rotation = (rotation + 1) % 4;
   renderSelection();
-  if (hoverAnchor) showPreview(hoverAnchor.x, hoverAnchor.y);
+  if (pendingAnchor) setPendingAnchor(pendingAnchor.x, pendingAnchor.y);
+  else if (hoverAnchor) showPreview(hoverAnchor.x, hoverAnchor.y);
 }
 
 function flipSelected() {
   if (!selectedPiece || !canAct()) return;
   flipped = !flipped;
   renderSelection();
-  if (hoverAnchor) showPreview(hoverAnchor.x, hoverAnchor.y);
+  if (pendingAnchor) setPendingAnchor(pendingAnchor.x, pendingAnchor.y);
+  else if (hoverAnchor) showPreview(hoverAnchor.x, hoverAnchor.y);
+}
+
+async function confirmPlacement() {
+  if (!pendingAnchor || !pendingPlacementValid) return;
+  const pieceId = selectedPiece;
+  dom.confirmPlacementButton.disabled = true;
+  await placeSelected(pendingAnchor.x, pendingAnchor.y);
+  if (selectedPiece !== pieceId) {
+    pendingAnchor = null;
+    pendingPlacementValid = false;
+  }
 }
 
 async function placeSelected(anchorX, anchorY) {
@@ -1010,6 +1043,7 @@ dom.resultLobbyButton.addEventListener("click", leaveRoom);
 dom.rotateButton.addEventListener("click", rotateSelected);
 dom.flipButton.addEventListener("click", flipSelected);
 dom.clearSelectionButton.addEventListener("click", clearSelection);
+dom.confirmPlacementButton.addEventListener("click", confirmPlacement);
 dom.rulesButton.addEventListener("click", () => dom.rulesDialog.showModal());
 
 document.querySelectorAll(".lobby-tab").forEach((button) => {
@@ -1050,6 +1084,7 @@ dom.pieceBank.addEventListener("click", (event) => {
 });
 
 dom.board.addEventListener("pointerover", (event) => {
+  if (dragPointerId !== null || event.pointerType === "touch") return;
   const cell = event.target.closest(".cell");
   if (!cell) return;
   hoverAnchor = { x: Number(cell.dataset.x), y: Number(cell.dataset.y) };
@@ -1057,13 +1092,42 @@ dom.board.addEventListener("pointerover", (event) => {
 });
 
 dom.board.addEventListener("pointerleave", () => {
+  if (dragPointerId !== null) return;
   hoverAnchor = null;
-  clearPreview();
+  if (pendingAnchor) showPreview(pendingAnchor.x, pendingAnchor.y);
+  else clearPreview();
 });
+
+dom.board.addEventListener("pointerdown", (event) => {
+  if (!selectedPiece || !canAct()) return;
+  const cell = event.target.closest(".cell");
+  if (!cell) return;
+  event.preventDefault();
+  dragPointerId = event.pointerId;
+  dom.board.setPointerCapture(event.pointerId);
+  setPendingAnchor(Number(cell.dataset.x), Number(cell.dataset.y));
+});
+
+dom.board.addEventListener("pointermove", (event) => {
+  if (event.pointerId !== dragPointerId) return;
+  event.preventDefault();
+  const cell = document.elementFromPoint(event.clientX, event.clientY)?.closest(".cell");
+  if (cell && dom.board.contains(cell)) setPendingAnchor(Number(cell.dataset.x), Number(cell.dataset.y));
+});
+
+function finishBoardDrag(event) {
+  if (event.pointerId !== dragPointerId) return;
+  dragPointerId = null;
+  if (dom.board.hasPointerCapture(event.pointerId)) dom.board.releasePointerCapture(event.pointerId);
+  if (pendingPlacementValid) setStatus("位置已保留，点击“确认落子”完成操作。", "success");
+}
+
+dom.board.addEventListener("pointerup", finishBoardDrag);
+dom.board.addEventListener("pointercancel", finishBoardDrag);
 
 dom.board.addEventListener("click", (event) => {
   const cell = event.target.closest(".cell");
-  if (cell) placeSelected(Number(cell.dataset.x), Number(cell.dataset.y));
+  if (cell && dragPointerId === null) setPendingAnchor(Number(cell.dataset.x), Number(cell.dataset.y));
 });
 
 document.addEventListener("keydown", (event) => {

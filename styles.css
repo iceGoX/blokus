@@ -574,6 +574,8 @@ button:focus-visible, input:focus-visible, a:focus-visible {
   user-select: none;
 }
 
+.board.positioning { touch-action: none; }
+
 .cell {
   position: relative;
   min-width: 0;
@@ -723,6 +725,7 @@ button:focus-visible, input:focus-visible, a:focus-visible {
 .selected-preview .mini-piece { --mini-cell: 11px; }
 
 .game-actions { margin-top: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.confirm-placement-button { grid-column: 1 / -1; }
 .game-actions .text-button { grid-column: 1 / -1; min-height: 30px; }
 
 .rules-dialog,
