@@ -87,6 +87,7 @@ def public_room(room: dict) -> dict:
         "createdAt": room["createdAt"],
         "updatedAt": room["updatedAt"],
         "lastEvent": room.get("lastEvent"),
+        "thinking": room.get("thinking"),
         "rematchVotes": list(room.get("rematchVotes", [])),
         "players": [
             {
@@ -297,7 +298,7 @@ class Handler(BaseHTTPRequestHandler):
             self.create_room(data)
             return
 
-        match = re.fullmatch(r"/api/rooms/([A-Z2-9]{6})/(join|start|place|resign|finish|pass|rematch|leave)", path)
+        match = re.fullmatch(r"/api/rooms/([A-Z2-9]{6})/(join|start|think|place|resign|finish|pass|rematch|leave)", path)
         if not match:
             self.send_json(HTTPStatus.NOT_FOUND, {"error": "NOT_FOUND", "message": "接口不存在。"})
             return
@@ -307,6 +308,8 @@ class Handler(BaseHTTPRequestHandler):
             self.join_room(code, data)
         elif action == "start":
             self.start_room(code, data)
+        elif action == "think":
+            self.think(code, data)
         elif action == "place":
             self.place(code, data)
         elif action in {"resign", "finish", "pass"}:
@@ -340,6 +343,7 @@ class Handler(BaseHTTPRequestHandler):
                 "game": None,
                 "eventSequence": 0,
                 "lastEvent": None,
+                "thinking": None,
                 "rematchVotes": [],
             }
             rooms[code] = room
@@ -394,6 +398,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             room["game"] = create_game(room["players"], room["capacity"])
             room["status"] = "playing"
+            room["thinking"] = None
             room["rematchVotes"] = []
             set_room_event(room, "GAME_STARTED", "房间已满，游戏开始。")
             room["version"] += 1
@@ -433,6 +438,7 @@ class Handler(BaseHTTPRequestHandler):
             if not ok:
                 self.send_json(HTTPStatus.UNPROCESSABLE_ENTITY, {"error": "INVALID_MOVE", "message": message})
                 return
+            room["thinking"] = None
             if room["game"]["status"] == "finished":
                 room["status"] = "finished"
                 set_room_event(room, "GAME_FINISHED", "所有玩家均已结束，最终排名已生成。")
@@ -442,6 +448,54 @@ class Handler(BaseHTTPRequestHandler):
             room["updatedAt"] = now()
             response = public_room(room)
         self.send_json(HTTPStatus.OK, {"room": response})
+        enqueue_room(code)
+
+    def think(self, code: str, data: dict) -> None:
+        with rooms_lock:
+            room, player = self.authenticated_room(code)
+            if not room:
+                return
+            if room["status"] != "playing" or not room["game"]:
+                self.send_json(HTTPStatus.CONFLICT, {"error": "NOT_PLAYING", "message": "游戏尚未开始或已经结束。"})
+                return
+            current = room["game"]["players"][room["game"]["currentPlayer"]]
+            if current["id"] != player["id"]:
+                self.send_json(HTTPStatus.FORBIDDEN, {"error": "NOT_YOUR_TURN", "message": "还没有轮到你。"})
+                return
+
+            piece_id = data.get("pieceId")
+            if piece_id is None:
+                room["thinking"] = None
+            else:
+                rotation = data.get("rotation")
+                flipped = data.get("flipped")
+                anchor_x = data.get("anchorX")
+                anchor_y = data.get("anchorY")
+                if piece_id not in current["remaining"]:
+                    self.send_json(HTTPStatus.BAD_REQUEST, {"error": "INVALID_PIECE", "message": "该棋块不可用。"})
+                    return
+                if not isinstance(rotation, int) or rotation not in range(4) or not isinstance(flipped, bool):
+                    self.send_json(HTTPStatus.BAD_REQUEST, {"error": "INVALID_TRANSFORM", "message": "棋块方向无效。"})
+                    return
+                if (anchor_x is None) != (anchor_y is None):
+                    self.send_json(HTTPStatus.BAD_REQUEST, {"error": "INVALID_ANCHOR", "message": "预览位置无效。"})
+                    return
+                if anchor_x is not None:
+                    size = room["game"]["boardSize"]
+                    if not isinstance(anchor_x, int) or not isinstance(anchor_y, int) or not (0 <= anchor_x < size and 0 <= anchor_y < size):
+                        self.send_json(HTTPStatus.BAD_REQUEST, {"error": "INVALID_ANCHOR", "message": "预览位置无效。"})
+                        return
+                room["thinking"] = {
+                    "playerId": player["id"],
+                    "playerName": player["name"],
+                    "color": player["color"],
+                    "pieceId": piece_id,
+                    "rotation": rotation,
+                    "flipped": flipped,
+                    "anchorX": anchor_x,
+                    "anchorY": anchor_y,
+                }
+        self.send_json(HTTPStatus.OK, {"ok": True})
         enqueue_room(code)
 
     def resign_player(self, code: str, data: dict) -> None:
@@ -458,6 +512,7 @@ class Handler(BaseHTTPRequestHandler):
             if not ok:
                 self.send_json(HTTPStatus.UNPROCESSABLE_ENTITY, {"error": "CANNOT_PASS", "message": message})
                 return
+            room["thinking"] = None
             if room["game"]["status"] == "finished":
                 room["status"] = "finished"
                 set_room_event(room, "GAME_FINISHED", "所有玩家均已结束，最终排名已生成。")
@@ -491,6 +546,7 @@ class Handler(BaseHTTPRequestHandler):
             if len(room["rematchVotes"]) == len(room["players"]):
                 room["game"] = create_game(room["players"], room["capacity"])
                 room["status"] = "playing"
+                room["thinking"] = None
                 room["rematchVotes"] = []
                 set_room_event(room, "GAME_RESTARTED", "所有玩家已接受邀请，新一局开始。")
             else:

@@ -26,9 +26,9 @@ const COLOR_VALUES = {
   green: "var(--green)",
 };
 const COLOR_LABELS = {
-  blue: "蓝方",
+  blue: "薄荷方",
   yellow: "黄方",
-  red: "红方",
+  red: "芭乐方",
   green: "绿方",
 };
 const COLOR_SLOTS = {
@@ -70,6 +70,8 @@ let pendingAnchor = null;
 let pendingPlacementValid = false;
 let dragPointerId = null;
 let lastBoardPointerType = "mouse";
+let thinkingTimer = null;
+let lastThinkingSignature = "";
 
 function loadSession() {
   try {
@@ -114,6 +116,26 @@ async function api(path, { method = "GET", body, auth = true } = {}) {
     throw error;
   }
   return data;
+}
+
+function queueThinking(anchor = pendingAnchor || hoverAnchor) {
+  if (offlineMode || !room?.game || !session || !canAct()) return;
+  const payload = selectedPiece
+    ? {
+      pieceId: selectedPiece,
+      rotation,
+      flipped,
+      anchorX: anchor?.x ?? null,
+      anchorY: anchor?.y ?? null,
+    }
+    : { pieceId: null };
+  const signature = JSON.stringify(payload);
+  if (signature === lastThinkingSignature) return;
+  lastThinkingSignature = signature;
+  window.clearTimeout(thinkingTimer);
+  thinkingTimer = window.setTimeout(() => {
+    api(`/rooms/${room.code}/think`, { method: "POST", body: payload }).catch(() => {});
+  }, 90);
 }
 
 function currentBoardSize() {
@@ -454,6 +476,7 @@ function renderBoard() {
   const size = room.game.boardSize;
   if (cellNodes.length !== size * size) buildBoard(size);
   clearPreview();
+  clearThinkingPreview();
   const activeColors = new Set(room.game.players.map((player) => player.color));
   const cornerIndexes = new Map([
     [0, "blue"],
@@ -474,6 +497,7 @@ function renderBoard() {
     const color = [...label.classList].find((name) => name.startsWith("corner-"))?.slice(7);
     label.classList.toggle("inactive", !activeColors.has(color));
   });
+  renderThinkingPreview();
 }
 
 function renderPlayers() {
@@ -570,7 +594,11 @@ function renderTurn() {
       ? "选择棋块，与同色棋块角接角。"
       : `首块棋必须覆盖${player.colorLabel}的起始角。`);
   } else {
-    setStatus(`正在等待 ${player.name} 落子。`);
+    const thinking = room.thinking?.playerId === player.id ? room.thinking : null;
+    const piece = thinking ? PIECE_MAP.get(thinking.pieceId) : null;
+    setStatus(piece
+      ? `${player.name} 正在${Number.isInteger(thinking.anchorX) ? "调整落点" : "选择方向"}：${piece.name}…`
+      : `正在等待 ${player.name} 落子。`);
   }
 }
 
@@ -583,6 +611,8 @@ function renderGame() {
   renderPieces();
   renderSelection();
   renderTurn();
+  if (selectedPiece && pendingAnchor) setPendingAnchor(pendingAnchor.x, pendingAnchor.y);
+  else if (selectedPiece && hoverAnchor) showPreview(hoverAnchor.x, hoverAnchor.y);
 }
 
 function applyRoom(nextRoom) {
@@ -653,6 +683,7 @@ function clearSelection() {
     renderPieces();
     renderSelection();
   }
+  queueThinking(null);
 }
 
 function selectPiece(pieceId) {
@@ -667,6 +698,7 @@ function selectPiece(pieceId) {
   renderSelection();
   setStatus(`已选择${PIECE_MAP.get(pieceId).name}。拖动或轻点后确认；桌面可双击直接落子。`);
   if (hoverAnchor) showPreview(hoverAnchor.x, hoverAnchor.y);
+  queueThinking(hoverAnchor);
 }
 
 function clearPreview() {
@@ -676,6 +708,30 @@ function clearPreview() {
     if (node) delete node.dataset.previewPlayer;
   }
   previewIndexes = [];
+}
+
+function clearThinkingPreview() {
+  cellNodes.forEach((cell) => {
+    cell.classList.remove("thinking-preview");
+    delete cell.dataset.thinkingPlayer;
+  });
+}
+
+function renderThinkingPreview() {
+  const thinking = room?.thinking;
+  if (offlineMode || !thinking || thinking.playerId === session?.playerId) return;
+  if (!Number.isInteger(thinking.anchorX) || !Number.isInteger(thinking.anchorY)) return;
+  const player = room.game.players.find((item) => item.id === thinking.playerId);
+  const piece = PIECE_MAP.get(thinking.pieceId);
+  if (!player || !piece) return;
+  const shape = transform(piece.cells, thinking.rotation, thinking.flipped);
+  const cells = placementCells(shape, thinking.anchorX, thinking.anchorY, player);
+  cells.forEach(([x, y]) => {
+    if (!inBounds(x, y)) return;
+    const cell = cellNodes[boardIndex(x, y)];
+    cell.classList.add("thinking-preview");
+    cell.dataset.thinkingPlayer = thinking.color;
+  });
 }
 
 function showPreview(anchorX, anchorY) {
@@ -704,6 +760,7 @@ function setPendingAnchor(anchorX, anchorY) {
   pendingPlacementValid = Boolean(result?.ok);
   dom.confirmPlacementButton.disabled = !pendingPlacementValid;
   setStatus(result?.ok ? "位置可用，点击“确认落子”完成操作。" : result?.reason || "当前位置不可用。", result?.ok ? "success" : "error");
+  queueThinking(pendingAnchor);
 }
 
 function rotateSelected() {
@@ -711,7 +768,10 @@ function rotateSelected() {
   rotation = (rotation + 1) % 4;
   renderSelection();
   if (pendingAnchor) setPendingAnchor(pendingAnchor.x, pendingAnchor.y);
-  else if (hoverAnchor) showPreview(hoverAnchor.x, hoverAnchor.y);
+  else if (hoverAnchor) {
+    showPreview(hoverAnchor.x, hoverAnchor.y);
+    queueThinking(hoverAnchor);
+  } else queueThinking(null);
 }
 
 function flipSelected() {
@@ -719,7 +779,10 @@ function flipSelected() {
   flipped = !flipped;
   renderSelection();
   if (pendingAnchor) setPendingAnchor(pendingAnchor.x, pendingAnchor.y);
-  else if (hoverAnchor) showPreview(hoverAnchor.x, hoverAnchor.y);
+  else if (hoverAnchor) {
+    showPreview(hoverAnchor.x, hoverAnchor.y);
+    queueThinking(hoverAnchor);
+  } else queueThinking(null);
 }
 
 async function confirmPlacement() {
@@ -938,6 +1001,8 @@ function resetToLobby(message = "") {
   streamGeneration += 1;
   streamController?.abort();
   streamController = null;
+  window.clearTimeout(thinkingTimer);
+  lastThinkingSignature = "";
   saveSession(null);
   room = null;
   offlineMode = false;
@@ -1090,21 +1155,25 @@ dom.board.addEventListener("pointerover", (event) => {
   if (!cell) return;
   hoverAnchor = { x: Number(cell.dataset.x), y: Number(cell.dataset.y) };
   showPreview(hoverAnchor.x, hoverAnchor.y);
+  queueThinking(hoverAnchor);
 });
 
 dom.board.addEventListener("pointerleave", () => {
   if (dragPointerId !== null) return;
   hoverAnchor = null;
   if (pendingAnchor) showPreview(pendingAnchor.x, pendingAnchor.y);
-  else clearPreview();
+  else {
+    clearPreview();
+    queueThinking(null);
+  }
 });
 
 dom.board.addEventListener("pointerdown", (event) => {
   if (!selectedPiece || !canAct()) return;
   const cell = event.target.closest(".cell");
   if (!cell) return;
-  event.preventDefault();
-  lastBoardPointerType = event.pointerType;
+  if (event.pointerType !== "mouse") event.preventDefault();
+  lastBoardPointerType = event.pointerType || "mouse";
   dragPointerId = event.pointerId;
   dom.board.setPointerCapture(event.pointerId);
   setPendingAnchor(Number(cell.dataset.x), Number(cell.dataset.y));
@@ -1133,7 +1202,7 @@ dom.board.addEventListener("click", (event) => {
 });
 
 dom.board.addEventListener("dblclick", async (event) => {
-  if (lastBoardPointerType !== "mouse") return;
+  if (lastBoardPointerType === "touch" || lastBoardPointerType === "pen") return;
   const cell = event.target.closest(".cell");
   if (!cell) return;
   event.preventDefault();

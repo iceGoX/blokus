@@ -125,6 +125,31 @@ class ServerApiTests(unittest.TestCase):
         self.assertEqual(result["error"], "INVALID_MOVE")
         self.assertIsNotNone(joined["session"]["token"])
 
+    def test_current_player_thinking_is_shared_and_cleared_after_move(self):
+        created = self.create_room(2)
+        code = created["room"]["code"]
+        _, joined = self.request(f"/api/rooms/{code}/join", {"name": "玩家二"})
+        _, started = self.request(f"/api/rooms/{code}/start", {}, created["session"])
+
+        thinking = {
+            "pieceId": "I1",
+            "rotation": 0,
+            "flipped": False,
+            "anchorX": 0,
+            "anchorY": 0,
+        }
+        self.assertEqual(self.request(f"/api/rooms/{code}/think", thinking, created["session"])[0], 200)
+        status, observed = self.request(f"/api/rooms/{code}", session=joined["session"])
+        self.assertEqual(status, 200)
+        self.assertEqual(observed["room"]["thinking"]["pieceId"], "I1")
+        self.assertEqual(observed["room"]["thinking"]["playerId"], created["session"]["playerId"])
+        self.assertEqual(self.request(f"/api/rooms/{code}/think", thinking, joined["session"])[0], 403)
+
+        move = {**thinking, "expectedVersion": started["room"]["version"]}
+        self.assertEqual(self.request(f"/api/rooms/{code}/place", move, created["session"])[0], 200)
+        _, observed = self.request(f"/api/rooms/{code}", session=joined["session"])
+        self.assertIsNone(observed["room"]["thinking"])
+
     def test_resign_event_keeps_remaining_players_in_game_and_supports_rematch(self):
         created = self.create_room(2)
         code = created["room"]["code"]

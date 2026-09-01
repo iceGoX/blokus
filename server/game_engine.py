@@ -13,7 +13,7 @@ PIECES_PATH = Path(__file__).resolve().parents[1] / "shared" / "pieces.json"
 PIECES = json.loads(PIECES_PATH.read_text(encoding="utf-8"))
 PIECE_MAP = {piece["id"]: piece for piece in PIECES}
 
-COLOR_LABELS = {"blue": "蓝方", "yellow": "黄方", "red": "红方", "green": "绿方"}
+COLOR_LABELS = {"blue": "薄荷方", "yellow": "黄方", "red": "芭乐方", "green": "绿方"}
 
 # Two-player rooms use opposite corners. Three-player rooms use three corners.
 COLOR_SLOTS = {

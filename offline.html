@@ -22,12 +22,12 @@
   --cell: #34413d;
   --cell-hover: #43534e;
   --shadow: 0 24px 70px rgba(56, 46, 29, 0.18);
-  --blue: #2979df;
-  --blue-hi: #59a1ff;
+  --blue: #72d6b1;
+  --blue-hi: #c9ffea;
   --yellow: #f5b51b;
   --yellow-hi: #ffd35b;
-  --red: #ea4f42;
-  --red-hi: #ff8075;
+  --red: #f58caf;
+  --red-hi: #ffd0df;
   --green: #24a66b;
   --green-hi: #50d494;
   --focus: #0b6bc9;
@@ -616,12 +616,17 @@ button:focus-visible, input:focus-visible, a:focus-visible {
   box-shadow: 0 0 9px rgba(255,255,255,.42);
 }
 .cell.inactive-corner::before { opacity: .18; }
-.cell.filled::after, .cell.preview::after { inset: 5%; opacity: 1; }
-.cell.filled[data-player="blue"]::after, .cell.preview[data-preview-player="blue"]::after { background: linear-gradient(145deg, var(--blue-hi), var(--blue) 56%, #155ab4); }
-.cell.filled[data-player="yellow"]::after, .cell.preview[data-preview-player="yellow"]::after { background: linear-gradient(145deg, var(--yellow-hi), var(--yellow) 56%, #c58500); }
-.cell.filled[data-player="red"]::after, .cell.preview[data-preview-player="red"]::after { background: linear-gradient(145deg, var(--red-hi), var(--red) 56%, #b92d25); }
-.cell.filled[data-player="green"]::after, .cell.preview[data-preview-player="green"]::after { background: linear-gradient(145deg, var(--green-hi), var(--green) 56%, #117246); }
+.cell.filled::after, .cell.preview::after, .cell.thinking-preview::after {
+  inset: 5%;
+  opacity: .9;
+  box-shadow: inset 0 2px 2px rgba(255,255,255,.72), inset 0 -3px 5px rgba(32,62,55,.2), 0 2px 5px rgba(10,28,25,.25);
+}
+.cell.filled[data-player="blue"]::after, .cell.preview[data-preview-player="blue"]::after, .cell.thinking-preview[data-thinking-player="blue"]::after { background: linear-gradient(145deg, var(--blue-hi), rgba(114,214,177,.88) 48%, #42a987); }
+.cell.filled[data-player="yellow"]::after, .cell.preview[data-preview-player="yellow"]::after, .cell.thinking-preview[data-thinking-player="yellow"]::after { background: linear-gradient(145deg, var(--yellow-hi), var(--yellow) 56%, #c58500); }
+.cell.filled[data-player="red"]::after, .cell.preview[data-preview-player="red"]::after, .cell.thinking-preview[data-thinking-player="red"]::after { background: linear-gradient(145deg, var(--red-hi), rgba(245,140,175,.9) 48%, #d85f89); }
+.cell.filled[data-player="green"]::after, .cell.preview[data-preview-player="green"]::after, .cell.thinking-preview[data-thinking-player="green"]::after { background: linear-gradient(145deg, var(--green-hi), var(--green) 56%, #117246); }
 .cell.preview::after { opacity: .76; animation: preview-pulse 1.2s ease-in-out infinite alternate; }
+.cell.thinking-preview::after { opacity: .48; animation: preview-pulse 1.1s ease-in-out infinite alternate; }
 .cell.preview.invalid::after { background: repeating-linear-gradient(135deg, #f25b4d 0 4px, #95291f 4px 8px); opacity: .82; }
 .cell.last-move::before { content: ""; position: absolute; z-index: 2; inset: 33%; border: 2px solid rgba(255,255,255,.85); border-radius: 50%; }
 
@@ -945,10 +950,10 @@ body[data-offline-only="true"] #lobbyScreen { display: none; }
           <div class="score-strip" id="playerList" aria-label="玩家与积分"></div>
 
           <div class="board-frame">
-            <div class="corner-label corner-blue">蓝</div>
+            <div class="corner-label corner-blue">薄</div>
             <div class="corner-label corner-yellow">黄</div>
             <div class="corner-label corner-green">绿</div>
-            <div class="corner-label corner-red">红</div>
+            <div class="corner-label corner-red">芭</div>
             <div class="board" id="board" role="grid" aria-label="20 乘 20 角斗士棋棋盘"></div>
           </div>
 
@@ -1036,9 +1041,9 @@ const COLOR_VALUES = {
   green: "var(--green)",
 };
 const COLOR_LABELS = {
-  blue: "蓝方",
+  blue: "薄荷方",
   yellow: "黄方",
-  red: "红方",
+  red: "芭乐方",
   green: "绿方",
 };
 const COLOR_SLOTS = {
@@ -1080,6 +1085,8 @@ let pendingAnchor = null;
 let pendingPlacementValid = false;
 let dragPointerId = null;
 let lastBoardPointerType = "mouse";
+let thinkingTimer = null;
+let lastThinkingSignature = "";
 
 function loadSession() {
   try {
@@ -1443,6 +1450,7 @@ function renderBoard() {
   const size = room.game.boardSize;
   if (cellNodes.length !== size * size) buildBoard(size);
   clearPreview();
+  clearThinkingPreview();
   const activeColors = new Set(room.game.players.map((player) => player.color));
   const cornerIndexes = new Map([
     [0, "blue"],
@@ -1463,6 +1471,7 @@ function renderBoard() {
     const color = [...label.classList].find((name) => name.startsWith("corner-"))?.slice(7);
     label.classList.toggle("inactive", !activeColors.has(color));
   });
+  renderThinkingPreview();
 }
 
 function renderPlayers() {
@@ -1559,7 +1568,11 @@ function renderTurn() {
       ? "选择棋块，与同色棋块角接角。"
       : `首块棋必须覆盖${player.colorLabel}的起始角。`);
   } else {
-    setStatus(`正在等待 ${player.name} 落子。`);
+    const thinking = room.thinking?.playerId === player.id ? room.thinking : null;
+    const piece = thinking ? PIECE_MAP.get(thinking.pieceId) : null;
+    setStatus(piece
+      ? `${player.name} 正在${Number.isInteger(thinking.anchorX) ? "调整落点" : "选择方向"}：${piece.name}…`
+      : `正在等待 ${player.name} 落子。`);
   }
 }
 
@@ -1572,6 +1585,8 @@ function renderGame() {
   renderPieces();
   renderSelection();
   renderTurn();
+  if (selectedPiece && pendingAnchor) setPendingAnchor(pendingAnchor.x, pendingAnchor.y);
+  else if (selectedPiece && hoverAnchor) showPreview(hoverAnchor.x, hoverAnchor.y);
 }
 
 function applyRoom(nextRoom) {
@@ -1642,6 +1657,7 @@ function clearSelection() {
     renderPieces();
     renderSelection();
   }
+  queueThinking(null);
 }
 
 function selectPiece(pieceId) {
@@ -1656,6 +1672,7 @@ function selectPiece(pieceId) {
   renderSelection();
   setStatus(`已选择${PIECE_MAP.get(pieceId).name}。拖动或轻点后确认；桌面可双击直接落子。`);
   if (hoverAnchor) showPreview(hoverAnchor.x, hoverAnchor.y);
+  queueThinking(hoverAnchor);
 }
 
 function clearPreview() {
@@ -1665,6 +1682,30 @@ function clearPreview() {
     if (node) delete node.dataset.previewPlayer;
   }
   previewIndexes = [];
+}
+
+function clearThinkingPreview() {
+  cellNodes.forEach((cell) => {
+    cell.classList.remove("thinking-preview");
+    delete cell.dataset.thinkingPlayer;
+  });
+}
+
+function renderThinkingPreview() {
+  const thinking = room?.thinking;
+  if (offlineMode || !thinking || thinking.playerId === session?.playerId) return;
+  if (!Number.isInteger(thinking.anchorX) || !Number.isInteger(thinking.anchorY)) return;
+  const player = room.game.players.find((item) => item.id === thinking.playerId);
+  const piece = PIECE_MAP.get(thinking.pieceId);
+  if (!player || !piece) return;
+  const shape = transform(piece.cells, thinking.rotation, thinking.flipped);
+  const cells = placementCells(shape, thinking.anchorX, thinking.anchorY, player);
+  cells.forEach(([x, y]) => {
+    if (!inBounds(x, y)) return;
+    const cell = cellNodes[boardIndex(x, y)];
+    cell.classList.add("thinking-preview");
+    cell.dataset.thinkingPlayer = thinking.color;
+  });
 }
 
 function showPreview(anchorX, anchorY) {
@@ -1693,6 +1734,7 @@ function setPendingAnchor(anchorX, anchorY) {
   pendingPlacementValid = Boolean(result?.ok);
   dom.confirmPlacementButton.disabled = !pendingPlacementValid;
   setStatus(result?.ok ? "位置可用，点击“确认落子”完成操作。" : result?.reason || "当前位置不可用。", result?.ok ? "success" : "error");
+  queueThinking(pendingAnchor);
 }
 
 function rotateSelected() {
@@ -1700,7 +1742,10 @@ function rotateSelected() {
   rotation = (rotation + 1) % 4;
   renderSelection();
   if (pendingAnchor) setPendingAnchor(pendingAnchor.x, pendingAnchor.y);
-  else if (hoverAnchor) showPreview(hoverAnchor.x, hoverAnchor.y);
+  else if (hoverAnchor) {
+    showPreview(hoverAnchor.x, hoverAnchor.y);
+    queueThinking(hoverAnchor);
+  } else queueThinking(null);
 }
 
 function flipSelected() {
@@ -1708,7 +1753,10 @@ function flipSelected() {
   flipped = !flipped;
   renderSelection();
   if (pendingAnchor) setPendingAnchor(pendingAnchor.x, pendingAnchor.y);
-  else if (hoverAnchor) showPreview(hoverAnchor.x, hoverAnchor.y);
+  else if (hoverAnchor) {
+    showPreview(hoverAnchor.x, hoverAnchor.y);
+    queueThinking(hoverAnchor);
+  } else queueThinking(null);
 }
 
 async function confirmPlacement() {
@@ -1927,6 +1975,8 @@ function resetToLobby(message = "") {
   streamGeneration += 1;
   streamController?.abort();
   streamController = null;
+  window.clearTimeout(thinkingTimer);
+  lastThinkingSignature = "";
   saveSession(null);
   room = null;
   offlineMode = false;
@@ -2024,21 +2074,25 @@ dom.board.addEventListener("pointerover", (event) => {
   if (!cell) return;
   hoverAnchor = { x: Number(cell.dataset.x), y: Number(cell.dataset.y) };
   showPreview(hoverAnchor.x, hoverAnchor.y);
+  queueThinking(hoverAnchor);
 });
 
 dom.board.addEventListener("pointerleave", () => {
   if (dragPointerId !== null) return;
   hoverAnchor = null;
   if (pendingAnchor) showPreview(pendingAnchor.x, pendingAnchor.y);
-  else clearPreview();
+  else {
+    clearPreview();
+    queueThinking(null);
+  }
 });
 
 dom.board.addEventListener("pointerdown", (event) => {
   if (!selectedPiece || !canAct()) return;
   const cell = event.target.closest(".cell");
   if (!cell) return;
-  event.preventDefault();
-  lastBoardPointerType = event.pointerType;
+  if (event.pointerType !== "mouse") event.preventDefault();
+  lastBoardPointerType = event.pointerType || "mouse";
   dragPointerId = event.pointerId;
   dom.board.setPointerCapture(event.pointerId);
   setPendingAnchor(Number(cell.dataset.x), Number(cell.dataset.y));
@@ -2067,7 +2121,7 @@ dom.board.addEventListener("click", (event) => {
 });
 
 dom.board.addEventListener("dblclick", async (event) => {
-  if (lastBoardPointerType !== "mouse") return;
+  if (lastBoardPointerType === "touch" || lastBoardPointerType === "pen") return;
   const cell = event.target.closest(".cell");
   if (!cell) return;
   event.preventDefault();
