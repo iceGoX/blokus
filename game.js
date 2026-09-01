@@ -70,7 +70,6 @@ let pendingAnchor = null;
 let pendingPlacementValid = false;
 let dragPointerId = null;
 let lastBoardPointerType = "mouse";
-let lastMouseBoardClick = null;
 let thinkingTimer = null;
 let lastThinkingSignature = "";
 
@@ -679,7 +678,6 @@ function clearSelection() {
   hoverAnchor = null;
   pendingAnchor = null;
   pendingPlacementValid = false;
-  lastMouseBoardClick = null;
   clearPreview();
   if (room?.game) {
     renderPieces();
@@ -696,7 +694,6 @@ function selectPiece(pieceId) {
   flipped = false;
   pendingAnchor = null;
   pendingPlacementValid = false;
-  lastMouseBoardClick = null;
   renderPieces();
   renderSelection();
   setStatus(`已选择${PIECE_MAP.get(pieceId).name}。拖动或轻点后确认；桌面可双击直接落子。`);
@@ -1175,8 +1172,9 @@ dom.board.addEventListener("pointerdown", (event) => {
   if (!selectedPiece || !canAct()) return;
   const cell = event.target.closest(".cell");
   if (!cell) return;
-  if (event.pointerType !== "mouse") event.preventDefault();
   lastBoardPointerType = event.pointerType || "mouse";
+  if (lastBoardPointerType === "mouse") return;
+  event.preventDefault();
   dragPointerId = event.pointerId;
   dom.board.setPointerCapture(event.pointerId);
   setPendingAnchor(Number(cell.dataset.x), Number(cell.dataset.y));
@@ -1199,20 +1197,17 @@ function finishBoardDrag(event) {
 dom.board.addEventListener("pointerup", finishBoardDrag);
 dom.board.addEventListener("pointercancel", finishBoardDrag);
 
-dom.board.addEventListener("click", async (event) => {
-  if (!selectedPiece || !canAct()) return;
+dom.board.addEventListener("click", (event) => {
   const cell = event.target.closest(".cell");
-  if (!cell || dragPointerId !== null) return;
-  const anchor = { x: Number(cell.dataset.x), y: Number(cell.dataset.y) };
-  setPendingAnchor(anchor.x, anchor.y);
-  if (lastBoardPointerType === "touch" || lastBoardPointerType === "pen") return;
-  const clickedAt = performance.now();
-  const isSecondClick = lastMouseBoardClick
-    && lastMouseBoardClick.x === anchor.x
-    && lastMouseBoardClick.y === anchor.y
-    && clickedAt - lastMouseBoardClick.time <= 520;
-  lastMouseBoardClick = isSecondClick ? null : { ...anchor, time: clickedAt };
-  if (isSecondClick) await confirmPlacement();
+  if (cell && dragPointerId === null) setPendingAnchor(Number(cell.dataset.x), Number(cell.dataset.y));
+});
+
+dom.board.addEventListener("dblclick", async (event) => {
+  if (lastBoardPointerType !== "mouse" || !selectedPiece || !canAct()) return;
+  const cell = event.target.closest(".cell");
+  if (!cell) return;
+  event.preventDefault();
+  await placeSelected(Number(cell.dataset.x), Number(cell.dataset.y));
 });
 
 document.addEventListener("keydown", (event) => {
