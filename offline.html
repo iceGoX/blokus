@@ -1002,7 +1002,7 @@ body[data-offline-only="true"] #lobbyScreen { display: none; }
           <li><b>03</b><span><strong>房间裁决</strong> 落子由服务器验证并同步给所有玩家，客户端不能自行修改棋局。</span></li>
           <li><b>04</b><span><strong>认输结束</strong> 玩家可随时认输并退出后续回合；其他玩家继续，所有人结束后按剩余方格结算。</span></li>
         </ol>
-        <p class="dialog-tip">房间模式为每人一色：2 人使用 14×14 棋盘，3 人使用 17×17，4 人使用标准 20×20。离线模式由一人操作四种颜色。拖动或轻点棋盘定位，再点击确认落子。桌面快捷键：<kbd>R</kbd> 旋转、<kbd>F</kbd> 翻面、<kbd>Esc</kbd> 取消选择。</p>
+        <p class="dialog-tip">房间模式为每人一色：2 人使用 14×14 棋盘，3 人使用 17×17，4 人使用标准 20×20。离线模式由一人操作四种颜色。拖动或轻点棋盘定位，再点击确认落子；桌面也可双击直接落子。快捷键：<kbd>R</kbd> 旋转、<kbd>F</kbd> 翻面、<kbd>Esc</kbd> 取消选择。</p>
       </form>
     </dialog>
 
@@ -1079,6 +1079,7 @@ let offlineMode = false;
 let pendingAnchor = null;
 let pendingPlacementValid = false;
 let dragPointerId = null;
+let lastBoardPointerType = "mouse";
 
 function loadSession() {
   try {
@@ -1653,7 +1654,7 @@ function selectPiece(pieceId) {
   pendingPlacementValid = false;
   renderPieces();
   renderSelection();
-  setStatus(`已选择${PIECE_MAP.get(pieceId).name}。在棋盘上拖动或轻点定位，再确认落子。`);
+  setStatus(`已选择${PIECE_MAP.get(pieceId).name}。拖动或轻点后确认；桌面可双击直接落子。`);
   if (hoverAnchor) showPreview(hoverAnchor.x, hoverAnchor.y);
 }
 
@@ -2037,6 +2038,7 @@ dom.board.addEventListener("pointerdown", (event) => {
   const cell = event.target.closest(".cell");
   if (!cell) return;
   event.preventDefault();
+  lastBoardPointerType = event.pointerType;
   dragPointerId = event.pointerId;
   dom.board.setPointerCapture(event.pointerId);
   setPendingAnchor(Number(cell.dataset.x), Number(cell.dataset.y));
@@ -2062,6 +2064,15 @@ dom.board.addEventListener("pointercancel", finishBoardDrag);
 dom.board.addEventListener("click", (event) => {
   const cell = event.target.closest(".cell");
   if (cell && dragPointerId === null) setPendingAnchor(Number(cell.dataset.x), Number(cell.dataset.y));
+});
+
+dom.board.addEventListener("dblclick", async (event) => {
+  if (lastBoardPointerType !== "mouse") return;
+  const cell = event.target.closest(".cell");
+  if (!cell) return;
+  event.preventDefault();
+  setPendingAnchor(Number(cell.dataset.x), Number(cell.dataset.y));
+  await confirmPlacement();
 });
 
 document.addEventListener("keydown", (event) => {

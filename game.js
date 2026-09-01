@@ -69,6 +69,7 @@ let offlineMode = false;
 let pendingAnchor = null;
 let pendingPlacementValid = false;
 let dragPointerId = null;
+let lastBoardPointerType = "mouse";
 
 function loadSession() {
   try {
@@ -664,7 +665,7 @@ function selectPiece(pieceId) {
   pendingPlacementValid = false;
   renderPieces();
   renderSelection();
-  setStatus(`已选择${PIECE_MAP.get(pieceId).name}。在棋盘上拖动或轻点定位，再确认落子。`);
+  setStatus(`已选择${PIECE_MAP.get(pieceId).name}。拖动或轻点后确认；桌面可双击直接落子。`);
   if (hoverAnchor) showPreview(hoverAnchor.x, hoverAnchor.y);
 }
 
@@ -1103,6 +1104,7 @@ dom.board.addEventListener("pointerdown", (event) => {
   const cell = event.target.closest(".cell");
   if (!cell) return;
   event.preventDefault();
+  lastBoardPointerType = event.pointerType;
   dragPointerId = event.pointerId;
   dom.board.setPointerCapture(event.pointerId);
   setPendingAnchor(Number(cell.dataset.x), Number(cell.dataset.y));
@@ -1128,6 +1130,15 @@ dom.board.addEventListener("pointercancel", finishBoardDrag);
 dom.board.addEventListener("click", (event) => {
   const cell = event.target.closest(".cell");
   if (cell && dragPointerId === null) setPendingAnchor(Number(cell.dataset.x), Number(cell.dataset.y));
+});
+
+dom.board.addEventListener("dblclick", async (event) => {
+  if (lastBoardPointerType !== "mouse") return;
+  const cell = event.target.closest(".cell");
+  if (!cell) return;
+  event.preventDefault();
+  setPendingAnchor(Number(cell.dataset.x), Number(cell.dataset.y));
+  await confirmPlacement();
 });
 
 document.addEventListener("keydown", (event) => {
