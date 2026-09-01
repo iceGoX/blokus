@@ -28,6 +28,7 @@ def main() -> None:
         start = js.index(start_marker)
         end = js.index(end_marker, start)
         js = js[:start] + js[end:]
+    js = js.replace("function currentBoardSize()", "function queueThinking() {}\n\nfunction currentBoardSize()", 1)
     js = js.replace("buildBoard();\nrestoreSession();", "buildBoard();")
     js += "\n\nstartOfflineMode();"
     html = html.replace("<body data-theme=\"tabletop\">", '<body data-theme="tabletop" data-offline-only="true">')
