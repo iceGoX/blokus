@@ -1,10 +1,22 @@
 import json
+import queue
 import threading
 import unittest
 import urllib.error
 import urllib.request
 
-from server.app import BlokusServer, Handler, rooms, room_subscribers
+from server.app import (
+    RATE_LIMIT_WINDOW_SECONDS,
+    STREAM_CLOSED,
+    WAITING_ROOM_TTL_SECONDS,
+    MAX_ACTIVE_ROOMS_PER_IP,
+    BlokusServer,
+    Handler,
+    cleanup_expired_state,
+    request_times,
+    room_subscribers,
+    rooms,
+)
 
 
 class ServerApiTests(unittest.TestCase):
@@ -24,6 +36,7 @@ class ServerApiTests(unittest.TestCase):
     def setUp(self):
         rooms.clear()
         room_subscribers.clear()
+        request_times.clear()
 
     def request(self, path, body=None, session=None):
         headers = {}
@@ -84,6 +97,30 @@ class ServerApiTests(unittest.TestCase):
         status, result = self.request(f"/api/rooms/{code}/start", {}, created["session"])
         self.assertEqual(status, 409)
         self.assertEqual(result["error"], "ROOM_NOT_FULL")
+
+    def test_cleanup_expires_connected_room_and_prunes_rate_limit_state(self):
+        created = self.create_room(2)
+        code = created["room"]["code"]
+        channel = queue.Queue(maxsize=8)
+        closed = threading.Event()
+        channel.put_nowait("old room update")
+        room_subscribers[code].append({"playerId": created["session"]["playerId"], "queue": channel, "closed": closed})
+        current = rooms[code]["updatedAt"] + WAITING_ROOM_TTL_SECONDS + 1
+        request_times["stale-ip"].append(current - RATE_LIMIT_WINDOW_SECONDS - 1)
+
+        self.assertEqual(cleanup_expired_state(current), [code])
+        self.assertNotIn(code, rooms)
+        self.assertNotIn(code, room_subscribers)
+        self.assertTrue(closed.is_set())
+        self.assertIs(channel.get_nowait(), STREAM_CLOSED)
+        self.assertNotIn("stale-ip", request_times)
+
+    def test_room_creation_is_bounded_per_ip(self):
+        for _ in range(MAX_ACTIVE_ROOMS_PER_IP):
+            self.create_room(2)
+        status, result = self.request("/api/rooms", {"name": "额外房主", "capacity": 2})
+        self.assertEqual(status, 429)
+        self.assertEqual(result["error"], "ROOM_LIMIT_REACHED")
 
     def test_full_room_can_start_and_accept_authoritative_move(self):
         created = self.create_room(2)

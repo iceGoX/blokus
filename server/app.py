@@ -36,6 +36,13 @@ ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 ROOM_CODE_RE = re.compile(r"^[A-Z2-9]{6}$")
 NAME_RE = re.compile(r"^[^\x00-\x1f<>]{1,16}$")
 MAX_BODY_BYTES = 16 * 1024
+RATE_LIMIT_WINDOW_SECONDS = 60
+WAITING_ROOM_TTL_SECONDS = 7200
+PLAYING_ROOM_TTL_SECONDS = 86400
+FINISHED_ROOM_TTL_SECONDS = 3600
+MAX_ACTIVE_ROOMS = 1000
+MAX_ACTIVE_ROOMS_PER_IP = 20
+STREAM_CLOSED = object()
 
 STATIC_FILES = {
     "/": ROOT / "index.html",
@@ -142,6 +149,8 @@ def enqueue_room(room_code: str) -> None:
         payload = json.dumps(public_room(room), ensure_ascii=False, separators=(",", ":"))
         subscribers = list(room_subscribers.get(room_code, []))
     for subscriber in subscribers:
+        if subscriber["closed"].is_set():
+            continue
         channel = subscriber["queue"]
         try:
             channel.put_nowait(payload)
@@ -156,22 +165,60 @@ def enqueue_room(room_code: str) -> None:
                 pass
 
 
+def room_ttl(room: dict) -> int:
+    if room["status"] == "waiting":
+        return WAITING_ROOM_TTL_SECONDS
+    if room["status"] == "finished":
+        return FINISHED_ROOM_TTL_SECONDS
+    return PLAYING_ROOM_TTL_SECONDS
+
+
+def close_stream(subscriber: dict) -> None:
+    closed = subscriber.get("closed")
+    if closed:
+        closed.set()
+    channel = subscriber["queue"]
+    try:
+        while True:
+            channel.get_nowait()
+    except queue.Empty:
+        pass
+    try:
+        channel.put_nowait(STREAM_CLOSED)
+    except queue.Full:
+        pass
+
+
+def cleanup_expired_state(current: float | None = None) -> list[str]:
+    current = now() if current is None else current
+    expired_codes = []
+    expired_streams = []
+    with rooms_lock:
+        for code, room in rooms.items():
+            if current - room["updatedAt"] > room_ttl(room):
+                expired_codes.append(code)
+        for code in expired_codes:
+            rooms.pop(code, None)
+            expired_streams.extend(room_subscribers.pop(code, []))
+
+    for subscriber in expired_streams:
+        close_stream(subscriber)
+
+    with rate_lock:
+        stale_ips = [
+            ip
+            for ip, entries in request_times.items()
+            if not entries or current - entries[-1] > RATE_LIMIT_WINDOW_SECONDS
+        ]
+        for ip in stale_ips:
+            request_times.pop(ip, None)
+    return expired_codes
+
+
 def clean_rooms() -> None:
     while True:
         time.sleep(300)
-        current = now()
-        with rooms_lock:
-            expired = []
-            for code, room in rooms.items():
-                age = current - room["updatedAt"]
-                limit = 3600 if room["status"] == "finished" else 86400
-                if room["status"] == "waiting":
-                    limit = 7200
-                if age > limit and not room_subscribers.get(code):
-                    expired.append(code)
-            for code in expired:
-                rooms.pop(code, None)
-                room_subscribers.pop(code, None)
+        cleanup_expired_state()
 
 
 class BlokusServer(ThreadingHTTPServer):
@@ -205,7 +252,7 @@ class Handler(BaseHTTPRequestHandler):
         current = now()
         with rate_lock:
             entries = request_times[ip]
-            while entries and current - entries[0] > 60:
+            while entries and current - entries[0] > RATE_LIMIT_WINDOW_SECONDS:
                 entries.popleft()
             if len(entries) >= 180:
                 return True
@@ -329,7 +376,16 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(HTTPStatus.BAD_REQUEST, {"error": "INVALID_CAPACITY", "message": "房间人数必须是 2、3 或 4。"})
             return
 
+        cleanup_expired_state()
+        creator_ip = self.client_ip()
         with rooms_lock:
+            if len(rooms) >= MAX_ACTIVE_ROOMS:
+                self.send_json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "SERVER_AT_CAPACITY", "message": "当前房间数量已达上限，请稍后再试。"})
+                return
+            creator_rooms = sum(room.get("creatorIp") == creator_ip for room in rooms.values())
+            if creator_rooms >= MAX_ACTIVE_ROOMS_PER_IP:
+                self.send_json(HTTPStatus.TOO_MANY_REQUESTS, {"error": "ROOM_LIMIT_REACHED", "message": "当前网络创建的活跃房间过多，请先结束已有房间或等待其过期。"})
+                return
             code = make_room_code()
             player = make_player(name, capacity, 0, True)
             room = {
@@ -339,6 +395,7 @@ class Handler(BaseHTTPRequestHandler):
                 "version": 1,
                 "createdAt": now(),
                 "updatedAt": now(),
+                "creatorIp": creator_ip,
                 "players": [player],
                 "game": None,
                 "eventSequence": 0,
@@ -599,7 +656,7 @@ class Handler(BaseHTTPRequestHandler):
         enqueue_room(code)
 
     def handle_events(self, code: str) -> None:
-        subscriber = {"queue": queue.Queue(maxsize=8), "playerId": None}
+        subscriber = {"queue": queue.Queue(maxsize=8), "playerId": None, "closed": threading.Event()}
         player = None
         with rooms_lock:
             room, player = self.authenticated_room(code)
@@ -625,8 +682,12 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(f"data: {payload}\n\n".encode("utf-8"))
             self.wfile.flush()
             while True:
+                if subscriber["closed"].is_set():
+                    break
                 try:
                     message = subscriber["queue"].get(timeout=5)
+                    if message is STREAM_CLOSED or subscriber["closed"].is_set():
+                        break
                     self.wfile.write(f"data: {message}\n\n".encode("utf-8"))
                 except queue.Empty:
                     self.wfile.write(b": keepalive\n\n")
