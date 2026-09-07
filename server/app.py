@@ -47,8 +47,11 @@ STREAM_CLOSED = object()
 STATIC_FILES = {
     "/": ROOT / "index.html",
     "/index.html": ROOT / "index.html",
+    "/offline.html": ROOT / "offline.html",
     "/styles.css": ROOT / "styles.css",
     "/game.js": ROOT / "game.js",
+    "/ui.js": ROOT / "ui.js",
+    "/assets/design/blokus-hero.jpg": ROOT / "assets/design/blokus-hero.jpg",
     "/shared/pieces.json": ROOT / "shared" / "pieces.json",
 }
 

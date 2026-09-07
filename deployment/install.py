@@ -26,8 +26,11 @@ def install(source: Path, domain: str) -> None:
     nginx_site = Path("/etc/nginx/sites-available") / domain
     required = [
         source / "index.html",
+        source / "offline.html",
         source / "styles.css",
         source / "game.js",
+        source / "ui.js",
+        source / "assets/design/blokus-hero.jpg",
         source / "shared" / "pieces.json",
         source / "server" / "app.py",
         source / "server" / "game_engine.py",
@@ -41,7 +44,7 @@ def install(source: Path, domain: str) -> None:
     for relative in ("server/app.py", "server/game_engine.py", "server/__init__.py", "shared/pieces.json"):
         copy_file(source / relative, APP_ROOT / relative)
 
-    for relative in ("index.html", "styles.css", "game.js", "shared/pieces.json"):
+    for relative in ("index.html", "offline.html", "styles.css", "game.js", "shared/pieces.json", "ui.js", "assets/design/blokus-hero.jpg"):
         copy_file(source / relative, WEB_ROOT / relative)
 
     copy_file(source / "deployment" / "blokus.service", SERVICE_FILE)

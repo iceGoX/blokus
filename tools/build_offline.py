@@ -3,6 +3,9 @@
 
 from pathlib import Path
 import json
+import base64
+import mimetypes
+import re
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -12,6 +15,16 @@ def main() -> None:
     html = (ROOT / "index.html").read_text(encoding="utf-8")
     css = (ROOT / "styles.css").read_text(encoding="utf-8")
     js = (ROOT / "game.js").read_text(encoding="utf-8")
+    ui = (ROOT / "ui.js").read_text(encoding="utf-8")
+    html = html.replace('<script src="ui.js" defer></script>', f"<script>\n{ui}\n</script>")
+
+    def inline_image(match):
+        path = ROOT / match.group(1)
+        mime = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+        return f'src="data:{mime};base64,{encoded}"'
+
+    html = re.sub(r'src="(assets/design/[^"\n]+)"', inline_image, html)
     pieces = json.loads((ROOT / "shared" / "pieces.json").read_text(encoding="utf-8"))
 
     html = html.replace('<link rel="stylesheet" href="styles.css" />', f"<style>\n{css}\n</style>")
