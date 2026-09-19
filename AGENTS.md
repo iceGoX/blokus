@@ -86,3 +86,8 @@
 - 实际 UI 改动检查桌面、平板、手机及鼠标/触控路径，分别报告静态检查、自动测试与浏览器验证结果。
 - 按改动范围运行 `python3 -m unittest discover -s tests -v`、`node --check game.js`、`python3 -m py_compile server/app.py server/game_engine.py`。仅修改本文件时做文档和 diff 检查，不必运行游戏测试。
 - 收尾检查 `git status --short`、`git diff --check`。提交、推送与部署仅在用户明确要求时执行；生产子路径为 `/blokus/`，发布细节以当前 `README.md` 和 `deployment/` 为准。
+
+## 可编辑设计稿与落地记录
+
+- [Pixso 设计文件](https://pixso.net/app/design/EkiwN1Njlbxn043HnBJpVA)，位于 `icego.tech` 文件夹。
+- [设计与视觉资源说明](docs/design/README.md)、[本地 UI 验证记录](design-qa.md)。
