@@ -25,6 +25,9 @@ def copy_file(source: Path, target: Path, mode: int = 0o644) -> None:
 def install(source: Path, domain: str) -> None:
     nginx_site = Path("/etc/nginx/sites-available") / domain
     required = [
+        source / "assets/icons/favicon-32-v1.png",
+        source / "assets/icons/apple-touch-icon-v1.png",
+        source / "assets/icons/favicon-v1.svg",
         source / "index.html",
         source / "offline.html",
         source / "styles.css",
@@ -44,7 +47,7 @@ def install(source: Path, domain: str) -> None:
     for relative in ("server/app.py", "server/game_engine.py", "server/__init__.py", "shared/pieces.json"):
         copy_file(source / relative, APP_ROOT / relative)
 
-    for relative in ("index.html", "offline.html", "styles.css", "game.js", "shared/pieces.json", "ui.js", "assets/design/blokus-hero.jpg"):
+    for relative in ("assets/icons/favicon-32-v1.png", "assets/icons/apple-touch-icon-v1.png", "assets/icons/favicon-v1.svg", "index.html", "offline.html", "styles.css", "game.js", "shared/pieces.json", "ui.js", "assets/design/blokus-hero.jpg"):
         copy_file(source / relative, WEB_ROOT / relative)
 
     copy_file(source / "deployment" / "blokus.service", SERVICE_FILE)

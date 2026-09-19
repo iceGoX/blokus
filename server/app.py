@@ -45,6 +45,9 @@ MAX_ACTIVE_ROOMS_PER_IP = 20
 STREAM_CLOSED = object()
 
 STATIC_FILES = {
+    "/assets/icons/favicon-32-v1.png": ROOT / "assets/icons/favicon-32-v1.png",
+    "/assets/icons/apple-touch-icon-v1.png": ROOT / "assets/icons/apple-touch-icon-v1.png",
+    "/assets/icons/favicon-v1.svg": ROOT / "assets/icons/favicon-v1.svg",
     "/": ROOT / "index.html",
     "/index.html": ROOT / "index.html",
     "/offline.html": ROOT / "offline.html",
