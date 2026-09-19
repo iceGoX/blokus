@@ -22,9 +22,10 @@ def main() -> None:
         path = ROOT / match.group(1)
         mime = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
         encoded = base64.b64encode(path.read_bytes()).decode("ascii")
-        return f'src="data:{mime};base64,{encoded}"'
+        return f'{match.group(0).split("=", 1)[0]}="data:{mime};base64,{encoded}"'
 
     html = re.sub(r'src="(assets/design/[^"\n]+)"', inline_image, html)
+    html = re.sub(r'href="(assets/icons/[^"\n]+)"', inline_image, html)
     pieces = json.loads((ROOT / "shared" / "pieces.json").read_text(encoding="utf-8"))
 
     html = html.replace('<link rel="stylesheet" href="styles.css" />', f"<style>\n{css}\n</style>")

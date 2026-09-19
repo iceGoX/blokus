@@ -62,3 +62,7 @@ python3 tests/public_smoke.py https://example.com/blokus/api
 ```bash
 python3 tools/build_offline.py
 ```
+
+## 网页图标
+
+`assets/icons/` 保存从 Pixso 导出的独立图标：浏览器小图标和 180px 主屏幕图标。替换图标时同步更新页面引用与静态资源／发布清单；文件名中的版本用于避免旧图标缓存。

@@ -1,0 +1,15 @@
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="64.000000" height="64.000000" fill="none" clip-path="url(#clipPath_0)" customFrame="url(#clipPath_0)">
+	<defs>
+		<clipPath id="clipPath_0">
+			<rect width="64.000000" height="64.000000" x="0.000001" y="0.000001" rx="14.000000" fill="rgb(255,255,255)" />
+		</clipPath>
+	</defs>
+	<rect id="对角棋" width="64.000000" height="64.000000" x="0.000001" y="0.000001" rx="14.000000" fill="rgb(255,248,238)" />
+	<rect id="薄荷" width="23.000000" height="23.000000" x="7.000001" y="7.000001" rx="5.000000" fill="rgb(134,204,186)" />
+	<rect id="杏黄" width="23.000000" height="23.000000" x="34.000000" y="7.000001" rx="5.000000" fill="rgb(242,190,87)" />
+	<rect id="珊瑚" width="23.000000" height="23.000000" x="7.000001" y="34.000000" rx="5.000000" fill="rgb(236,153,142)" />
+	<rect id="鼠尾草" width="23.000000" height="23.000000" x="34.000000" y="34.000000" rx="5.000000" fill="rgb(149,183,146)" />
+	<rect id="薄荷拼角" width="10.000000" height="10.000000" x="7.000001" y="27.000000" rx="3.000000" fill="rgb(134,204,186)" />
+	<rect id="珊瑚拼角" width="10.000000" height="10.000000" x="27.000000" y="47.000000" rx="3.000000" fill="rgb(236,153,142)" />
+	<rect id="杏黄拼角" width="10.000000" height="10.000000" x="47.000000" y="27.000000" rx="3.000000" fill="rgb(242,190,87)" />
+</svg>
